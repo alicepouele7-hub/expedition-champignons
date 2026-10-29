@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Expédition Mycologique & Cuisine</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- ÉCRAN 1 : ACCUEIL -->
+  <div id="screen-start" class="screen active">
+    <div class="panel">
+      <div class="badge-header">SIMULATION MYCOLOGIQUE & CULINAIRE</div>
+      <h1>Les Sentiers d'Automne</h1>
+      <p class="intro-text">
+        Mon amour, je sais que tu veux absolument aller chercher des champignons, je t'ai codé ça. Je sais bien que c'est pas comme dans la réalité mais j'ai essayé de faire de mon mieux pour que ça y ressemble. Prépare ton panier et ton couteau, tu pars en randonnée en montagne pour dénicher les champignons avant de rentrer cuisiner une omelette.
+      </p>
+      
+      <div class="rules-box">
+        <h3>Carnet de terrain :</h3>
+        <ul>
+          <li><strong>Dénivelé & Énergie :</strong> Grimper en altitude fatigue vite. Surveille ton endurance, bois à ta gourde et remplis-la aux ruisseaux.</li>
+          <li><strong>Observation :</strong> Les champignons sont camouflés sous les feuilles mortes et la mousse près des arbres. Approche-toi et utilise le bouton <em>Fouiller</em>.</li>
+          <li><strong>Identification :</strong> Attention aux sosies toxiques (Bolet Satan, Fausse Girolle). Consulte ton guide avant de couper !</li>
+          <li><strong>Objectif :</strong> Récolter <strong>6 champignons comestibles</strong> (dont au moins 3 espèces différentes) avant la tombée de la nuit.</li>
+        </ul>
+      </div>
+
+      <button class="btn-primary" onclick="startExpedition()">Prendre le sentier</button>
+    </div>
+  </div>
+
+  <!-- ÉCRAN 2 : EXPLORATION EN MONTAGNE -->
+  <div id="screen-forest" class="screen">
+    <!-- HUD Supérieur -->
+    <div class="hud-container">
+      <div class="hud-row">
+        <div class="hud-stat">
+          <span class="hud-label">ENDURANCE</span>
+          <div class="bar-bg"><div id="stamina-bar" class="bar-fill stamina"></div></div>
+        </div>
+        <div class="hud-stat">
+          <span class="hud-label">HYDRATATION</span>
+          <div class="bar-bg"><div id="water-bar" class="bar-fill water"></div></div>
+        </div>
+      </div>
+      <div class="hud-row info-pills">
+        <div class="pill">Alt : <span id="alt-val">240</span>m (<span id="slope-val">Plat</span>)</div>
+        <div class="pill">Heure : <span id="time-val">08:00</span></div>
+        <div class="pill">Panier : <span id="basket-val">0</span> / 6</div>
+      </div>
+      <div id="forest-banner" class="banner-msg">Explore les sous-bois et approche-toi des amas de feuilles ou de mousse.</div>
+    </div>
+
+    <canvas id="forest-canvas"></canvas>
+
+    <!-- Contrôles Bas : Joystick + Boutons d'action -->
+    <div class="controls-overlay">
+      <div id="joystick-zone">
+        <div id="joystick-base">
+          <div id="joystick-stick"></div>
+        </div>
+      </div>
+
+      <div class="action-buttons">
+        <button id="btn-guide" class="btn-action secondary" onclick="toggleGuide()">Guide Botanique</button>
+        <button id="btn-water" class="btn-action secondary" onclick="useCanteen()">Boire (<span id="canteen-uses">3</span>/3)</button>
+        <button id="btn-search" class="btn-action primary disabled" onclick="interactSpot()">Fouiller le sol</button>
+      </div>
+    </div>
+
+    <!-- Fenêtre d'Inspection d'un Champignon trouvé -->
+    <div id="modal-inspect" class="modal-overlay hidden">
+      <div class="modal-box">
+        <h2>Spécimen découvert</h2>
+        <canvas id="inspect-canvas" width="220" height="180"></canvas>
+        <div class="specimen-details">
+          <p><strong>Habitat :</strong> <span id="spec-habitat"></span></p>
+          <p><strong>Chapeau :</strong> <span id="spec-cap"></span></p>
+          <p><strong>Sous le chapeau :</strong> <span id="spec-under"></span></p>
+          <p><strong>Pied & Odeur :</strong> <span id="spec-stem"></span></p>
+        </div>
+        <div class="modal-actions">
+          <button class="btn-secondary" onclick="leaveMushroom()">Laisser sur place</button>
+          <button class="btn-primary" onclick="harvestMushroom()">Couper au couteau</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Fenêtre du Guide Mycologique -->
+    <div id="modal-guide" class="modal-overlay hidden">
+      <div class="modal-box wide">
+        <h2>Guide d'Identification</h2>
+        <div class="guide-list">
+          <div class="guide-item good-border">
+            <h4>Cèpe de Bordeaux (Comestible - Mi-pente 350m+)</h4>
+            <p>Chapeau brun noisette, mousse blanche ou jaune-vert dessous (tubes), pied ventru beige avec un fin réseau blanc. Odeur de sous-bois.</p>
+          </div>
+          <div class="guide-item bad-border">
+            <h4>Bolet Satan (Toxique - Sosie du Cèpe)</h4>
+            <p>Chapeau très clair (blanc grisâtre), dessous rouge sang ou orangé, pied très gros rouge et jaune. Odeur désagréable.</p>
+          </div>
+          <div class="guide-item good-border">
+            <h4>Girolle / Chanterelle (Comestible - Plaine & Colline)</h4>
+            <p>Couleur jaune d'œuf uniforme, chapeau en entonnoir avec des plis épais qui descendent sur le pied. Odeur fruitée d'abricot.</p>
+          </div>
+          <div class="guide-item bad-border">
+            <h4>Fausse Girolle (Toxique - Sosie de la Girolle)</h4>
+            <p>Couleur orangé vif à rouille, lamelles fines et serrées (pas des plis), pied plus grêle et creux. Aucune odeur fruitée.</p>
+          </div>
+          <div class="guide-item good-border">
+            <h4>Morille Conique (Comestible d'exception - Haute montagne 650m+)</h4>
+            <p>Chapeau brun sombre pointu entièrement creusé d'alvéoles comme une éponge. Pied blanc crème et creux.</p>
+          </div>
+          <div class="guide-item bad-border">
+            <h4>Gyromitre / Fausse Morille (Mortel - Haute montagne)</h4>
+            <p>Chapeau brun-roux difforme ressemblant à une cervelle plissée (lobes tortueux et non des alvéoles régulières).</p>
+          </div>
+        </div>
+        <button class="btn-primary" onclick="toggleGuide()">Fermer le guide</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ÉCRAN 3 : CUISINE RÉALISTE -->
+  <div id="screen-kitchen" class="screen">
+    <div class="kitchen-top">
+      <div class="step-indicator">ÉTAPE <span id="k-step-num">1</span> SUR 6</div>
+      <h2 id="k-step-title">Nettoyage à sec</h2>
+      <p id="k-step-desc">Un bon champignon ne se noie jamais dans l'eau ! Frotte chaque champignon avec ton doigt pour retirer la terre et la mousse.</p>
+    </div>
+
+    <div class="kitchen-workspace">
+      <canvas id="kitchen-canvas" width="360" height="360"></canvas>
+    </div>
+
+    <div class="kitchen-controls">
+      <div id="k-progress-wrap" class="bar-bg large">
+        <div id="k-progress-bar" class="bar-fill cook"></div>
+      </div>
+
+      <!-- Contrôles spécifiques à certaines étapes (Thermostat, Assaisonnement) -->
+      <div id="k-extra-controls" class="extra-controls hidden"></div>
+
+      <button id="k-next-btn" class="btn-primary hidden" onclick="nextKitchenStep()">Étape suivante</button>
+    </div>
+  </div>
+
+  <!-- ÉCRAN 4 : DÉGUSTATION & CADEAU -->
+  <div id="screen-end" class="screen">
+    <div class="panel">
+      <div class="badge-header">FIN DE L'AVENTURE</div>
+      <h1 id="final-title">Omelette Forestière</h1>
+      <canvas id="final-plate-canvas" width="240" height="160"></canvas>
+      
+      <div class="score-breakdown" id="final-report"></div>
+
+      <div class="gift-voucher">
+        <h3>BON POUR UNE VRAIE EXPÉDITION</h3>
+        <p>
+          Maintenant que tu maîtrises le dénivelé, la reconnaissance des cèpes, des girolles et des morilles ainsi que la cuisson baveuse au beurre noisette...
+        </p>
+        <p class="highlight-gift">
+          Ce jeu te donne droit à une vraie sortie aux champignons toutes les deux en pleine nature, suivie d'une véritable omelette préparée ensemble ! Je t'aime mon coeur 💓
+        </p>
+      </div>
+
+      <button class="btn-primary" onclick="location.reload()">Recommencer une randonnée</button>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
