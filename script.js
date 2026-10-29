@@ -1,3 +1,17 @@
+/* Compatibilité : roundRect n'existe pas sur les anciens navigateurs mobiles
+   (sans ça, le jeu plante dès le premier dessin du personnage) */
+if (typeof CanvasRenderingContext2D !== 'undefined' && !CanvasRenderingContext2D.prototype.roundRect) {
+  CanvasRenderingContext2D.prototype.roundRect = function (x, y, w, h, r) {
+    r = Math.min(Array.isArray(r) ? r[0] : (r || 0), w / 2, h / 2);
+    this.moveTo(x + r, y);
+    this.arcTo(x + w, y, x + w, y + h, r);
+    this.arcTo(x + w, y + h, x, y + h, r);
+    this.arcTo(x, y + h, x, y, r);
+    this.arcTo(x, y, x + w, y, r);
+    this.closePath();
+  };
+}
+
 /* ============================================================================
    PARTIE 1 : SIMULATION DE RANDONNÉE & CUEILLETTE EN MONTAGNE (SANS EMOJIS)
    ============================================================================ */
@@ -122,10 +136,27 @@ function getStreamY(x) {
   return 1850 + Math.sin(x / 220) * 70;
 }
 
+function tryLandscapeLock() {
+  try {
+    const isPhone = window.matchMedia('(pointer: coarse)').matches && Math.min(screen.width, screen.height) < 900;
+    if (!isPhone) return;
+    const el = document.documentElement;
+    const p = (!document.fullscreenElement && el.requestFullscreen) ? el.requestFullscreen() : Promise.resolve();
+    Promise.resolve(p).then(() => {
+      if (screen.orientation && screen.orientation.lock) return screen.orientation.lock('landscape');
+    }).catch(() => {});
+  } catch (e) {}
+}
+
+let lastFrame = 0;
+
 function startExpedition() {
+  tryLandscapeLock();
+  lastFrame = 0;
   showScreen('screen-forest');
   resizeForestCanvas();
   window.addEventListener('resize', resizeForestCanvas);
+  window.addEventListener('orientationchange', () => setTimeout(resizeForestCanvas, 250));
 
   hiker.x = 1200;
   hiker.y = 2150;
@@ -249,16 +280,33 @@ function initJoystick() {
     stick.style.transform = `translate(0px, 0px)`;
   }
 
-  zone.onpointerdown = (e) => { joy.active = true; moveStick(e.clientX, e.clientY); };
-  window.onpointermove = (e) => { if (joy.active) moveStick(e.clientX, e.clientY); };
-  window.onpointerup = resetStick;
+  // On suit UN doigt précis : appuyer sur un bouton avec l'autre main ne coupe plus le joystick
+  let joyPointerId = null;
+  zone.onpointerdown = (e) => {
+    e.preventDefault();
+    joyPointerId = e.pointerId;
+    joy.active = true;
+    try { zone.setPointerCapture(e.pointerId); } catch (err) {}
+    moveStick(e.clientX, e.clientY);
+  };
+  zone.onpointermove = (e) => {
+    if (joy.active && e.pointerId === joyPointerId) moveStick(e.clientX, e.clientY);
+  };
+  const endJoy = (e) => {
+    if (e.pointerId === joyPointerId) { joyPointerId = null; resetStick(); }
+  };
+  zone.onpointerup = endJoy;
+  zone.onpointercancel = endJoy;
+  zone.onlostpointercapture = endJoy;
 }
 
-function forestLoop() {
+function forestLoop(now) {
   if (!forestActive) return;
+  const dt = lastFrame ? Math.min(3, (now - lastFrame) / 16.667) : 1;
+  lastFrame = now;
 
   // Avancée de l'heure (1 seconde réelle = ~1.5 minute en jeu)
-  gameMinutes += 0.025;
+  gameMinutes += 0.025 * dt;
   weatherFog = 0.05 + Math.max(0, (getAltitudeAt(hiker.x, hiker.y) - 500) / 1400);
 
   const prevAlt = getAltitudeAt(hiker.x, hiker.y);
@@ -295,8 +343,8 @@ function forestLoop() {
       staminaDrain = 0.03;
     }
 
-    const finalX = hiker.x + joy.dx * baseSpeed * slopeFactor;
-    const finalY = hiker.y + joy.dy * baseSpeed * slopeFactor;
+    const finalX = hiker.x + joy.dx * baseSpeed * slopeFactor * dt;
+    const finalY = hiker.y + joy.dy * baseSpeed * slopeFactor * dt;
 
     // Collision avec les rochers et troncs d'arbres
     let blocked = false;
@@ -317,13 +365,13 @@ function forestLoop() {
     }
 
     hiker.angle = Math.atan2(joy.dy, joy.dx);
-    hiker.stepPhase += 0.18;
-    hiker.stamina = Math.max(0, hiker.stamina - staminaDrain);
-    hiker.hydration = Math.max(0, hiker.hydration - 0.038);
+    hiker.stepPhase += 0.18 * dt;
+    hiker.stamina = Math.max(0, hiker.stamina - staminaDrain * dt);
+    hiker.hydration = Math.max(0, hiker.hydration - 0.038 * dt);
   } else {
     // Récupération lente à l'arrêt
     const recovRate = hiker.hydration > 30 ? 0.12 : 0.04;
-    hiker.stamina = Math.min(100, hiker.stamina + recovRate);
+    hiker.stamina = Math.min(100, hiker.stamina + recovRate * dt);
   }
 
   // Détection des éléments interactifs proches (Cachette, Ruisseau, Souche)
@@ -807,6 +855,7 @@ let foldStage = 0;
 function initKitchen() {
   showScreen('screen-kitchen');
   kStep = 1;
+  kLastFrame = 0;
   setupKitchenStep();
   setupKitchenInput();
   if (kAnimId) cancelAnimationFrame(kAnimId);
@@ -906,6 +955,7 @@ function setupKitchenInput() {
 
   kCanvas.onpointerdown = (e) => {
     kPointerDown = true;
+    try { kCanvas.setPointerCapture(e.pointerId); } catch (err) {}
     lastPointer = getCanvasPos(e);
   };
 
@@ -965,6 +1015,7 @@ function setupKitchenInput() {
   };
 
   window.addEventListener('pointerup', () => { kPointerDown = false; });
+  window.addEventListener('pointercancel', () => { kPointerDown = false; });
 }
 
 function updateKitchenProgress(val) {
@@ -985,7 +1036,11 @@ function nextKitchenStep() {
   }
 }
 
-function kitchenLoop() {
+let kLastFrame = 0;
+
+function kitchenLoop(now) {
+  const kdt = (now && kLastFrame) ? Math.min(3, (now - kLastFrame) / 16.667) : 1;
+  if (now) kLastFrame = now;
   kCtx.clearRect(0, 0, kCanvas.width, kCanvas.height);
 
   if (kStep === 1 || kStep === 2) {
@@ -1135,13 +1190,13 @@ function kitchenLoop() {
   } else if (kStep === 5) {
     // Cuisson thermique de l'omelette aux champignons
     const targetTemp = panHeat === 1 ? 42 : (panHeat === 2 ? 68 : 95);
-    panTemp += (targetTemp - panTemp) * 0.015;
+    panTemp += (targetTemp - panTemp) * (1 - Math.pow(1 - 0.015, kdt));
 
     if (panTemp >= 52 && panTemp <= 82) {
-      omeletteCook = Math.min(100, omeletteCook + 0.18);
+      omeletteCook = Math.min(100, omeletteCook + 0.18 * kdt);
     } else if (panTemp > 82) {
-      omeletteCook = Math.min(100, omeletteCook + 0.25);
-      omeletteBurn = Math.min(100, omeletteBurn + 0.22);
+      omeletteCook = Math.min(100, omeletteCook + 0.25 * kdt);
+      omeletteBurn = Math.min(100, omeletteBurn + 0.22 * kdt);
     }
 
     updateKitchenProgress(omeletteCook);
